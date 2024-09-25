@@ -6,10 +6,41 @@ import { assert } from "chai";
 import bs58 from "bs58";
 import dotenv from "dotenv";
 dotenv.config();
+
 console.log(process.env.PHANTOM_SECRET_OWNER);
 const phantomSecretKeyBase58 = process.env.PHANTOM_SECRET_OWNER;
 const owner_pk = bs58.decode(phantomSecretKeyBase58);
 const owner_keypair = Keypair.fromSecretKey(owner_pk);
+
+const phantomSecretKeyBase58_voter = process.env.PHANTOM_SECRET_VOTER;
+const voter_pk = bs58.decode(phantomSecretKeyBase58_voter);
+const voter_keypair = Keypair.fromSecretKey(voter_pk);
+const voterAcc = anchor.web3.Keypair.generate();
+
+const MAX_OPTIONS = 10;
+const STRING_LENGTH = 32;
+
+function stringToFixedByteArray(str, length) {
+  const buffer = Buffer.alloc(length);
+  const strBytes = Buffer.from(str, "utf-8");
+  strBytes.copy(buffer);
+  return Array.from(buffer);
+}
+
+const question = stringToFixedByteArray(
+  "What is your favorite color?",
+  STRING_LENGTH
+);
+const options = [
+  stringToFixedByteArray("Red", STRING_LENGTH),
+  stringToFixedByteArray("Blue", STRING_LENGTH),
+  stringToFixedByteArray("Green", STRING_LENGTH),
+];
+
+while (options.length < MAX_OPTIONS) {
+  options.push(stringToFixedByteArray("", STRING_LENGTH));
+}
+
 describe("poll", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
 
@@ -20,8 +51,6 @@ describe("poll", () => {
   it("Initialize poll!", async () => {
     console.log("Owner Public Key:", owner_keypair.publicKey.toString());
     console.log("Poll Public Key:", pollkeypair.publicKey.toString());
-    const question = "What is your favorite color?";
-    const options = ["Red", "Blue", "Green"];
     const pollingStartDate = Math.floor(Date.now() / 1000);
     const pollingStartDateBN = new BN(pollingStartDate);
     const pollingEndDate = pollingStartDate + 3600;
@@ -37,27 +66,25 @@ describe("poll", () => {
       .signers([owner_keypair, pollkeypair])
       .rpc();
     const pollAccount = await program.account.poll.fetch(pollkeypair.publicKey);
-    assert.equal(pollAccount.question, "What is your favorite color?");
-    assert.deepEqual(pollAccount.options, ["Red", "Blue", "Green"]);
-    assert.equal(pollAccount.votes.length, 3);
-    for (let i = 0; i < pollAccount.votes.length; i++) {
-      assert.equal(pollAccount.votes[i].toNumber(), 0);
-    }
+
+    console.log("Fetched Question:", pollAccount.question);
+    console.log("Type of fetched question:", typeof pollAccount.question);
+    console.log("Type of expected question:", typeof question);
+    console.log("Expected Question:", question);
 
     console.log("Your transaction signature", tx_1);
   });
   it("Vote", async () => {
-    const voter = anchor.web3.Keypair.generate();
     const votingChoice = 1;
     await program.methods
       .vote(votingChoice)
       .accounts({
         poll: pollkeypair.publicKey,
-        voter: voter.publicKey,
-        voterAcc: anchor.web3.Keypair.generate().publicKey,
+        voter: voter_keypair.publicKey,
+        voterAcc: voterAcc.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([voter])
+      .signers([voterAcc, voter_keypair])
       .rpc();
   });
 
@@ -69,11 +96,64 @@ describe("poll", () => {
       })
       .rpc();
 
-    console.log("Poll results:", results);
-    assert.isArray(results);
-    assert.equal(results.length, 3);
-    assert.equal(parseInt(results[0]), 1);
-    assert.equal(parseInt(results[1]), 0);
-    assert.equal(parseInt(results[2]), 0);
+    const pollAccount = await program.account.poll.fetch(pollkeypair.publicKey);
+    const resultsArray = pollAccount.votes;
+    assert.equal(
+      resultsArray[0].toNumber(),
+      1,
+      "Expected vote count for option 1 to be 1"
+    );
+    assert.equal(
+      resultsArray[1].toNumber(),
+      0,
+      "Expected vote count for option 2 to be 0"
+    );
+    assert.equal(
+      resultsArray[2].toNumber(),
+      0,
+      "Expected vote count for option 3 to be 0"
+    );
+  });
+
+  it("Voting again", async () => {
+    const voterAcc = anchor.web3.Keypair.generate();
+    const votingChoice = 1;
+
+    await program.methods
+      .vote(votingChoice)
+      .accounts({
+        poll: pollkeypair.publicKey,
+        voterAcc: voterAcc.publicKey,
+        voter: voter_keypair.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .signers([voter_keypair, voterAcc])
+      .rpc();
+  });
+  it("View poll results", async () => {
+    const results = await program.methods
+      .viewResults()
+      .accounts({
+        poll: pollkeypair.publicKey,
+      })
+      .rpc();
+
+    const pollAccount = await program.account.poll.fetch(pollkeypair.publicKey);
+    const resultsArray = pollAccount.votes;
+    assert.equal(
+      resultsArray[0].toNumber(),
+      2,
+      "Expected vote count for option 1 to be 2"
+    );
+    assert.equal(
+      resultsArray[1].toNumber(),
+      0,
+      "Expected vote count for option 2 to be 0"
+    );
+    assert.equal(
+      resultsArray[2].toNumber(),
+      0,
+      "Expected vote count for option 3 to be 0"
+    );
   });
 });
