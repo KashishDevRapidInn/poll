@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("HgCqeiSjynVtgvB5jf8cwkY2W8nhw9vFZuKWpCUupRmy");
+declare_id!("HFbCBW7oa5KYbTbmkmL9vmcjybvW1iDm1Q2X8ApBa9QC");
 const MAX_OPTIONS: usize = 10;
 const STRING_LENGTH: usize = 32;
 #[program]
@@ -26,7 +26,7 @@ pub mod poll {
     pub fn vote(ctx: Context<Vote>, voting_choice: u16) -> Result<()> {
         let voter_acc = &mut ctx.accounts.voter_acc;
         let poll = &mut ctx.accounts.poll;
-        let current_time = Clock::get()?.unix_timestamp as u64;
+        let current_time: u64 = Clock::get()?.unix_timestamp as u64;
         if current_time < poll.polling_start_date || current_time > poll.polling_end_date {
             return Err(PollError::PollingNotActive.into());
         };
@@ -58,7 +58,7 @@ pub struct InitializePoll<'info> {
 pub struct Vote<'info> {
     #[account(mut)]
     pub poll: Account<'info, Poll>,
-    #[account(init, payer= voter, space=8+32+1)]
+    #[account(init_if_needed, payer= voter, seeds = [poll.key().as_ref(), voter.key().as_ref()], bump, space= 8+32+1)]
     pub voter_acc: Account<'info, Voter>,
     #[account(mut)]
     pub voter: Signer<'info>,

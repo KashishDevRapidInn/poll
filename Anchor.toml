@@ -5,13 +5,13 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-poll = "HgCqeiSjynVtgvB5jf8cwkY2W8nhw9vFZuKWpCUupRmy"
+poll = "HFbCBW7oa5KYbTbmkmL9vmcjybvW1iDm1Q2X8ApBa9QC"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

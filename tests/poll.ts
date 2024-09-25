@@ -45,9 +45,11 @@ describe("poll", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
 
   const program = anchor.workspace.Poll as Program<Poll>;
-
   const pollkeypair = anchor.web3.Keypair.generate();
-
+  const voterAccPublicKey = anchor.web3.PublicKey.findProgramAddress(
+    [pollkeypair.publicKey.toBuffer(), voter_keypair.publicKey.toBuffer()],
+    program.programId
+  );
   it("Initialize poll!", async () => {
     console.log("Owner Public Key:", owner_keypair.publicKey.toString());
     console.log("Poll Public Key:", pollkeypair.publicKey.toString());
@@ -74,6 +76,7 @@ describe("poll", () => {
 
     console.log("Your transaction signature", tx_1);
   });
+
   it("Vote", async () => {
     const votingChoice = 1;
     await program.methods
@@ -81,10 +84,10 @@ describe("poll", () => {
       .accounts({
         poll: pollkeypair.publicKey,
         voter: voter_keypair.publicKey,
-        voterAcc: voterAcc.publicKey,
+        voterAcc: voterAccPublicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([voterAcc, voter_keypair])
+      .signers([voter_keypair])
       .rpc();
   });
 
@@ -123,12 +126,13 @@ describe("poll", () => {
       .vote(votingChoice)
       .accounts({
         poll: pollkeypair.publicKey,
-        voterAcc: voterAcc.publicKey,
+        voterAcc: voterAccPublicKey.publicKey,
         voter: voter_keypair.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([voter_keypair, voterAcc])
+      .signers([voter_keypair])
       .rpc();
+    assert.fail("Epected to fail");
   });
   it("View poll results", async () => {
     const results = await program.methods
@@ -142,8 +146,86 @@ describe("poll", () => {
     const resultsArray = pollAccount.votes;
     assert.equal(
       resultsArray[0].toNumber(),
-      2,
+      1,
       "Expected vote count for option 1 to be 2"
+    );
+    assert.equal(
+      resultsArray[1].toNumber(),
+      0,
+      "Expected vote count for option 2 to be 0"
+    );
+    assert.equal(
+      resultsArray[2].toNumber(),
+      0,
+      "Expected vote count for option 3 to be 0"
+    );
+  });
+});
+
+describe("poll 2", () => {
+  anchor.setProvider(anchor.AnchorProvider.env());
+
+  const program = anchor.workspace.Poll as Program<Poll>;
+  const pollkeypair = anchor.web3.Keypair.generate();
+  const voterAccPublicKey = anchor.web3.PublicKey.findProgramAddress(
+    [pollkeypair.publicKey.toBuffer(), voter_keypair.publicKey.toBuffer()],
+    program.programId
+  );
+  it("Initialize poll!", async () => {
+    console.log("Owner Public Key:", owner_keypair.publicKey.toString());
+    console.log("Poll Public Key:", pollkeypair.publicKey.toString());
+    const pollingStartDate = Math.floor(Date.now() / 1000);
+    const pollingStartDateBN = new BN(pollingStartDate);
+    const pollingEndDate = pollingStartDate + 3600;
+    const pollingEndDateBN = new BN(pollingEndDate);
+
+    const tx_1 = await program.methods
+      .initializePoll(question, options, pollingStartDateBN, pollingEndDateBN)
+      .accounts({
+        owner: owner_keypair.publicKey,
+        poll: pollkeypair.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .signers([owner_keypair, pollkeypair])
+      .rpc();
+    const pollAccount = await program.account.poll.fetch(pollkeypair.publicKey);
+
+    console.log("Fetched Question:", pollAccount.question);
+    console.log("Type of fetched question:", typeof pollAccount.question);
+    console.log("Type of expected question:", typeof question);
+    console.log("Expected Question:", question);
+
+    console.log("Your transaction signature", tx_1);
+  });
+
+  it("Vote", async () => {
+    const votingChoice = 1;
+    await program.methods
+      .vote(votingChoice)
+      .accounts({
+        poll: pollkeypair.publicKey,
+        voter: voter_keypair.publicKey,
+        voterAcc: voterAccPublicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .signers([voter_keypair])
+      .rpc();
+  });
+
+  it("View poll results", async () => {
+    const results = await program.methods
+      .viewResults()
+      .accounts({
+        poll: pollkeypair.publicKey,
+      })
+      .rpc();
+
+    const pollAccount = await program.account.poll.fetch(pollkeypair.publicKey);
+    const resultsArray = pollAccount.votes;
+    assert.equal(
+      resultsArray[0].toNumber(),
+      1,
+      "Expected vote count for option 1 to be 1"
     );
     assert.equal(
       resultsArray[1].toNumber(),
